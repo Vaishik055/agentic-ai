@@ -1,7 +1,7 @@
 # Agentic AI Assistant for Sustainable Farming Decisions
 
 > **Final-Year Major Project (B.Tech CSE / AI-ML)**  
-> An autonomous multi-agent agronomic decision-support system that personalizes crop selection, soil nutrient balancing, irrigation planning, and sustainability evaluation for smallholder farmers.
+> An autonomous multi-agent agronomic decision-support system that personalizes crop selection, soil nutrient balancing, irrigation planning, sustainability evaluation, and market intelligence for smallholder farmers.
 
 ---
 
@@ -13,10 +13,12 @@ This project delivers an **Agentic AI System** that:
 - Ingests natural language farmer queries across regional dialects and text formats.
 - Autonomously extracts soil ($N, P, K, pH$) and climate features ($temperature, humidity, rainfall$).
 - Asks proactive clarifying questions when required data points are absent.
-- Predicts optimal crops using trained machine learning models (99.5% accuracy).
+- Predicts optimal crops using trained machine learning models (99.5% accuracy across 22 crops).
 - Recommends tailored chemical and bio-fertilizer dosages with split application schedules.
-- Connects autonomous external data agents (Weather, Soil, Market Mandi prices) and RAG over ICAR/KVK guides.
+- Connects autonomous external data agents (OpenWeatherMap, ICAR regional soil atlas, Agmarknet mandi market prices).
+- Retrieves verified agronomic best practices using FAISS vector semantic search over official ICAR and KVK extension guides.
 - Evaluates cost vs. profitability, yield potential, and an environmental Sustainability Score (0–100).
+- Orchestrates 8 specialized agents via **LangGraph StateGraph** into a unified, explainable reasoning report.
 
 ---
 
@@ -24,10 +26,21 @@ This project delivers an **Agentic AI System** that:
 
 1. **Phase 1 — Farmer Interaction & Input Layer:** FastAPI endpoints + Streamlit multilingual chat & parameter forms.
 2. **Phase 2 — AI Farming Assistant & Query Processing:** Natural language intent classification, entity extraction, missing feature prompts.
-3. **Phase 3 — Data Gathering Agents:** Autonomous external workers (Weather, Soil, Market Mandi Price, ICAR Knowledge RAG).
-4. **Phase 4 — Planning & Recommendation:** Crop Recommendation ML Agent + Fertilizer ML Agent + Irrigation / Crop Rotation Planner.
-5. **Phase 5 — Evaluation & Prediction:** Yield forecasting, cost/profit ROI estimation, and 0–100 Sustainability Index.
-6. **Phase 6 — Multi-Agent Orchestration & Reasoning:** LangGraph supervisor synthesizing multi-agent outputs into transparent, explainable advice.
+3. **Phase 3 — Data Gathering Agents:** Autonomous external workers:
+   - `WeatherAgent`: Fetches live/forecasted agro-meteorological data via OpenWeatherMap.
+   - `SoilAgent`: Retrieves regional soil profiles (type, pH, organic carbon) from ICAR Atlas.
+   - `MarketAgent`: Pulls real-time APMC mandi prices and market demand trends via Agmarknet.
+   - `KnowledgeAgent`: FAISS dense vector search over ICAR/KVK agronomic guidelines.
+4. **Phase 4 — Planning & Recommendation:**
+   - `CropRecommendationAgent`: Scikit-learn Random Forest model predicting optimal crop with confidence scoring.
+   - `FertilizerAgent`: ML classifier & nutrient stoichiometry calculating NPK deficits and split dosages.
+   - `RotationPlannerAgent`: 3-season crop rotation planner (Kharif -> Rabi -> Zaid) maximizing nitrogen fixation.
+5. **Phase 5 — Evaluation & Prediction:**
+   - `SustainabilityAgent`: 0–100 index measuring water footprint, chemical intensity, soil conservation, and carbon balance.
+   - `YieldProfitAgent`: Harvest yield estimation, operational cost breakdown, revenue projection, and net ROI calculation.
+6. **Phase 6 — Multi-Agent Orchestration & Reasoning:**
+   - `FarmOrchestrator`: LangGraph StateGraph compiling all agents into an autonomous 5-node cyclic reasoning workflow.
+   - `ReasoningAgent`: Generates transparent, farmer-friendly rationales reconciling trade-offs between profit and sustainability.
 
 ---
 
@@ -39,12 +52,17 @@ sustainable-farming-ai/
 │   ├── agents/
 │   │   ├── crop_recommendation_agent.py   # Week 3: Crop Recommendation Agent + LangChain Tool
 │   │   ├── fertilizer_agent.py            # Week 4: Fertilizer Advisory Agent + LangChain Tool
-│   │   ├── weather_agent.py               # (Week 5)
-│   │   ├── soil_agent.py                  # (Week 5)
-│   │   ├── market_agent.py                # (Week 5)
-│   │   └── orchestrator.py                # (Week 8)
+│   │   ├── weather_agent.py               # Week 5: Live Weather Intelligence Agent
+│   │   ├── soil_agent.py                  # Week 5: Regional Soil Profile Agent
+│   │   ├── market_agent.py                # Week 5: Mandi Market APMC Price Agent
+│   │   ├── knowledge_agent.py             # Week 6: Agronomic RAG Agent over ICAR/KVK manuals
+│   │   ├── sustainability_agent.py        # Week 7: Sustainability Scoring Agent (0-100)
+│   │   ├── yield_profit_agent.py          # Week 7: Yield & Profitability Forecaster
+│   │   ├── rotation_planner_agent.py      # Week 7: Multi-season Crop Rotation Planner
+│   │   ├── reasoning_agent.py             # Week 8: Explainable Reasoning Synthesis Agent
+│   │   └── orchestrator.py                # Week 8: Master LangGraph Multi-Agent Orchestrator
 │   ├── services/
-│   │   ├── crop_service.py                # Week 2: Scikit-learn Crop inference engine
+│   │   ├── crop_service.py                # Week 2: Crop ML inference engine (Random Forest)
 │   │   └── fertilizer_service.py          # Week 4: Fertilizer ML & dosage calculation engine
 │   ├── models/
 │   │   ├── crop_model.pkl                 # Random Forest Crop Classifier (99.5% acc)
@@ -57,19 +75,30 @@ sustainable-farming-ai/
 │   │   └── fertilizer_encoders.pkl
 │   ├── schemas/
 │   │   ├── crop_schemas.py                # Pydantic schemas for Crop ML & Agent
-│   │   └── fertilizer_schemas.py          # Pydantic schemas for Fertilizer ML & Agent
-│   ├── utils/
+│   │   ├── fertilizer_schemas.py          # Pydantic schemas for Fertilizer ML & Agent
+│   │   ├── data_schemas.py                # Pydantic schemas for Weather, Soil, Market
+│   │   ├── rag_schemas.py                 # Pydantic schemas for Knowledge RAG
+│   │   ├── evaluation_schemas.py          # Pydantic schemas for Sustainability, Profit, Rotation
+│   │   └── orchestrator_schemas.py        # Pydantic schemas for Master Orchestrator
 │   ├── rag/
+│   │   ├── document_loader.py             # Agronomic guide parser & chunker
+│   │   └── vector_store.py                # FAISS vector store with normalized embeddings
+│   ├── utils/
+│   │   └── api_clients.py                 # External API client adapters (Weather, Soil, Mandi)
 │   └── main.py                            # Production FastAPI application gateway
 ├── datasets/
 │   ├── crop_recommendation.csv            # Kaggle 22-crop benchmark dataset
 │   └── fertilizer_prediction.csv          # Agronomic soil-fertilizer training dataset
-├── notebooks/
-│   └── train_fertilizer_model.py          # Fertilizer ML training and evaluation pipeline
+├── docs/
+│   └── sample_icar_guidelines.md          # Official ICAR / KVK agronomic manuals
 ├── tests/
-│   ├── test_crop_service.py               # ML service validation tests
-│   ├── test_crop_agent.py                 # Crop Agent conversational tests
-│   └── test_fertilizer_agent.py           # Fertilizer Agent & service tests
+│   ├── test_crop_service.py               # Crop ML inference tests
+│   ├── test_crop_agent.py                 # Crop conversational agent tests
+│   ├── test_fertilizer_agent.py           # Fertilizer agent & dosage tests
+│   ├── test_data_agents.py                # Weather, Soil, Market agent tests
+│   ├── test_rag_agent.py                  # RAG loader, vector index, and knowledge tests
+│   ├── test_evaluation_agents.py          # Sustainability, Profit, and Rotation tests
+│   └── test_orchestrator.py               # LangGraph multi-agent orchestrator tests
 ├── requirements.txt
 ├── pytest.ini
 ├── .env.example
@@ -109,7 +138,7 @@ cp .env.example .env
 ```bash
 pytest -v
 ```
-All 18 unit and integration tests across services, tools, agents, and FastAPI endpoints will execute.
+All 48 unit and integration tests across services, tools, agents, vector store, and FastAPI endpoints will execute.
 
 ### 5. Launch FastAPI Backend
 ```bash
@@ -123,15 +152,27 @@ Interactive Swagger documentation is available at `http://localhost:8000/docs`.
 
 ### Health Endpoints
 - `GET /` — Root health check and system information.
-- `GET /health` — Detailed status checking ML model load states.
+- `GET /health` — Detailed status checking ML models and vector store load states.
 
-### Crop Recommendation
+### Core Recommendations & ML
 - `POST /predict/crop` — Direct ML inference from structured JSON features (`N, P, K, temperature, humidity, ph, rainfall`).
-- `POST /agent/crop` — Agentic conversational endpoint accepting free-text queries, identifying missing parameters, and calling `predict_crop_tool`.
-
-### Fertilizer Recommendation
+- `POST /agent/crop` — Agentic conversational endpoint accepting free-text queries.
 - `POST /predict/fertilizer` — Direct ML inference calculating optimal fertilizer, NPK deficit reports, and application dosage.
-- `POST /agent/fertilizer` — Agentic conversational endpoint interpreting farmer questions, calculating soil deficits, and outputting sustainable timing tips.
+- `POST /agent/fertilizer` — Agentic conversational endpoint interpreting farmer questions and outputting timing tips.
+
+### External Intelligence & RAG
+- `POST /agent/weather` — Real-time weather intelligence via OpenWeatherMap.
+- `POST /agent/soil` — Soil profile intelligence via ICAR Regional Soil Atlas.
+- `POST /agent/market` — APMC Mandi market price trends via Agmarknet.
+- `POST /agent/knowledge` — FAISS RAG vector search over ICAR/KVK agronomic manuals.
+
+### Evaluation & Planning
+- `POST /agent/sustainability` — 0–100 sustainability index evaluation.
+- `POST /agent/profitability` — Economic yield, cost, revenue, and net profit forecasting.
+- `POST /agent/rotation` — Multi-season crop rotation schedule planner.
+
+### Master Multi-Agent Orchestrator
+- `POST /agent/orchestrate` — LangGraph StateGraph pipeline executing entity extraction, autonomous environmental enrichment, crop & fertilizer recommendations, farm plan evaluation, and explainable farmer reasoning.
 
 ---
 
@@ -142,9 +183,9 @@ Interactive Swagger documentation is available at `http://localhost:8000/docs`.
 | **Week 2** | ✅ Completed | Crop Recommendation ML model (Random Forest, 99.5% acc) & FastAPI service. |
 | **Week 3** | ✅ Completed | Conversational `CropRecommendationAgent`, LangChain ML tool, clarification engine. |
 | **Week 4** | ✅ Completed | Fertilizer ML classifier (96.4% acc), deficit analysis service, and `FertilizerAgent`. |
-| **Week 5** | 🔄 Next | Autonomous external data agents (Weather, Soil, Market Mandi Price). |
-| **Week 6** | ⏳ Planned | Agricultural Knowledge RAG Agent (FAISS + sentence-transformers). |
-| **Week 7** | ⏳ Planned | Sustainability, Yield, Profit, and Crop Rotation Planners. |
-| **Week 8** | ⏳ Planned | LangGraph Multi-Agent Orchestrator & Reasoning Engine. |
+| **Week 5** | ✅ Completed | Autonomous external data agents (Weather, Soil, Market Mandi Price). |
+| **Week 6** | ✅ Completed | Agricultural Knowledge RAG Agent (FAISS + normalized TF-IDF embeddings). |
+| **Week 7** | ✅ Completed | Sustainability (0–100), Yield, Profit, and Crop Rotation Planners. |
+| **Week 8** | ✅ Completed | LangGraph Multi-Agent Orchestrator & Explainable Reasoning Engine. |
 | **Week 9** | ⏳ Planned | Streamlit Interactive Multilingual Frontend Dashboard. |
 | **Week 10** | ⏳ Planned | Packaging, Dockerization, Viva Documentation & Final Demo. |
