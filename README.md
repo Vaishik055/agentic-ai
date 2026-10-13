@@ -46,81 +46,80 @@ This project delivers an **Agentic AI System** that:
 ---
 
 ## 📁 Repository Structure
+
+```text
 agentic-ai/
 ├── backend/
-│ ├── agents/
-│ │ ├── crop_recommendation_agent.py # Crop Recommendation Agent & feature extraction
-│ │ ├── fertilizer_agent.py # Fertilizer Advisory Agent & stoichiometry
-│ │ ├── weather_agent.py # Live Weather Intelligence Agent (OpenWeatherMap)
-│ │ ├── soil_agent.py # Regional Soil Profile Agent (ICAR Atlas)
-│ │ ├── market_agent.py # Mandi Market APMC Price Agent (Agmarknet)
-│ │ ├── knowledge_agent.py # Agronomic RAG Agent over ICAR/KVK manuals
-│ │ ├── sustainability_agent.py # Sustainability Scoring Agent (0-100)
-│ │ ├── yield_profit_agent.py # Yield & Profitability Forecaster
-│ │ ├── rotation_planner_agent.py # Multi-season Crop Rotation Planner
-│ │ ├── reasoning_agent.py # Explainable Reasoning Synthesis Agent
-│ │ └── orchestrator.py # Master LangGraph Multi-Agent Orchestrator
-│ ├── services/
-│ │ ├── crop_service.py # Crop ML inference engine (Random Forest)
-│ │ └── fertilizer_service.py # Fertilizer ML & dosage calculation engine
-│ ├── models/
-│ │ ├── crop_model.pkl # Random Forest Crop Classifier (99.09% acc)
-│ │ └── fertilizer_model.pkl # Random Forest Fertilizer Classifier (96.43% acc)
-│ ├── scalers/
-│ │ ├── crop_scaler.pkl
-│ │ └── fertilizer_scaler.pkl
-│ ├── encoders/
-│ │ ├── label_encoder.pkl
-│ │ └── fertilizer_encoders.pkl
-│ ├── schemas/
-│ │ ├── crop_schemas.py # Pydantic schemas for Crop ML & Agent
-│ │ ├── fertilizer_schemas.py # Pydantic schemas for Fertilizer ML & Agent
-│ │ ├── data_schemas.py # Pydantic schemas for Weather, Soil, Market
-│ │ ├── rag_schemas.py # Pydantic schemas for Knowledge RAG
-│ │ ├── evaluation_schemas.py # Pydantic schemas for Sustainability, Profit, Rotation
-│ │ └── orchestrator_schemas.py # Pydantic schemas for Master Orchestrator
-│ ├── rag/
-│ │ ├── document_loader.py # Agronomic guide parser & chunker
-│ │ └── vector_store.py # Dense vector store with FAISS + NumPy fallback
-│ ├── utils/
-│ │ └── api_clients.py # External API client adapters (Weather, Soil, Mandi)
-│ └── main.py # Production FastAPI application gateway
+│   ├── agents/
+│   │   ├── crop_recommendation_agent.py   # Crop Recommendation Agent & feature extraction
+│   │   ├── fertilizer_agent.py            # Fertilizer Advisory Agent & stoichiometry
+│   │   ├── weather_agent.py               # Live Weather Intelligence Agent (OpenWeatherMap)
+│   │   ├── soil_agent.py                  # Regional Soil Profile Agent (ICAR Atlas)
+│   │   ├── market_agent.py                # Mandi Market APMC Price Agent (Agmarknet)
+│   │   ├── knowledge_agent.py             # Agronomic RAG Agent over ICAR/KVK manuals
+│   │   ├── sustainability_agent.py        # Sustainability Scoring Agent (0-100)
+│   │   ├── yield_profit_agent.py          # Yield & Profitability Forecaster
+│   │   ├── rotation_planner_agent.py      # Multi-season Crop Rotation Planner
+│   │   ├── reasoning_agent.py             # Explainable Reasoning Synthesis Agent
+│   │   └── orchestrator.py                # Master LangGraph Multi-Agent Orchestrator
+│   ├── services/
+│   │   ├── crop_service.py                # Crop ML inference engine (Random Forest)
+│   │   └── fertilizer_service.py          # Fertilizer ML & dosage calculation engine
+│   ├── models/
+│   │   ├── crop_model.pkl                 # Random Forest Crop Classifier (99.09% acc)
+│   │   └── fertilizer_model.pkl           # Random Forest Fertilizer Classifier (96.43% acc)
+│   ├── scalers/
+│   │   ├── crop_scaler.pkl
+│   │   └── fertilizer_scaler.pkl
+│   ├── encoders/
+│   │   ├── label_encoder.pkl
+│   │   └── fertilizer_encoders.pkl
+│   ├── schemas/
+│   │   ├── crop_schemas.py                # Pydantic schemas for Crop ML & Agent
+│   │   ├── fertilizer_schemas.py          # Pydantic schemas for Fertilizer ML & Agent
+│   │   ├── data_schemas.py                # Pydantic schemas for Weather, Soil, Market
+│   │   ├── rag_schemas.py                 # Pydantic schemas for Knowledge RAG
+│   │   ├── evaluation_schemas.py          # Pydantic schemas for Sustainability, Profit, Rotation
+│   │   └── orchestrator_schemas.py        # Pydantic schemas for Master Orchestrator
+│   ├── rag/
+│   │   ├── document_loader.py             # Agronomic guide parser & chunker
+│   │   └── vector_store.py                # Dense vector store with FAISS + NumPy fallback
+│   ├── utils/
+│   │   └── api_clients.py                 # External API client adapters (Weather, Soil, Mandi)
+│   └── main.py                            # Production FastAPI application gateway
 ├── frontend/
-│ ├── app.py # Interactive Streamlit Frontend (4 Tabs)
-│ ├── api_client.py # Resilient API client with direct ML fallback
-│ └── translations.py # Trilingual localization (English, Hindi, Telugu)
+│   ├── app.py                             # Interactive Streamlit Frontend (4 Tabs)
+│   ├── api_client.py                      # Resilient API client with direct ML fallback
+│   └── translations.py                    # Trilingual localization (English, Hindi, Telugu)
 ├── datasets/
-│ ├── crop_recommendation.csv # 22-crop agro-climatic benchmark dataset (2,200 rows)
-│ └── fertilizer_prediction.csv # Agronomic soil-fertilizer training dataset (2,100 rows)
+│   ├── crop_recommendation.csv            # 22-crop agro-climatic benchmark dataset (2,200 rows)
+│   └── fertilizer_prediction.csv          # Agronomic soil-fertilizer training dataset (2,100 rows)
 ├── notebooks/
-│ ├── evaluate_models.py # Comprehensive Model Evaluation Suite (Accuracy, CV, F1)
-│ ├── train_crop_model.py # 22-Crop Random Forest training pipeline
-│ └── train_fertilizer_model.py # Fertilizer Random Forest training pipeline
+│   ├── evaluate_models.py                 # Comprehensive Model Evaluation Suite (Accuracy, CV, F1)
+│   ├── train_crop_model.py                # 22-Crop Random Forest training pipeline
+│   └── train_fertilizer_model.py          # Fertilizer Random Forest training pipeline
 ├── docs/
-│ ├── PROJECT_DOCUMENTATION.md # Full Academic Project Report & 25 Viva Voce Q&As
-│ └── sample_icar_guidelines.md # Official ICAR / KVK agronomic manuals
+│   ├── PROJECT_DOCUMENTATION.md           # Full Academic Project Report & 25 Viva Voce Q&As
+│   └── sample_icar_guidelines.md          # Official ICAR / KVK agronomic manuals
 ├── tests/
-│ ├── test_crop_service.py # Crop ML inference tests
-│ ├── test_crop_agent.py # Crop conversational agent tests
-│ ├── test_fertilizer_agent.py # Fertilizer agent & dosage tests
-│ ├── test_data_agents.py # Weather, Soil, Market agent tests
-│ ├── test_rag_agent.py # RAG loader, vector index, and knowledge tests
-│ ├── test_evaluation_agents.py # Sustainability, Profit, and Rotation tests
-│ ├── test_orchestrator.py # LangGraph multi-agent orchestrator tests
-│ └── test_frontend.py # Streamlit frontend & translations tests
-├── Dockerfile # Multi-stage production container definition
-├── docker-compose.yml # Dual-container orchestration (FastAPI + Streamlit)
-├── run_project.sh # Automated 1-click startup script
+│   ├── test_crop_service.py               # Crop ML inference tests
+│   ├── test_crop_agent.py                 # Crop conversational agent tests
+│   ├── test_fertilizer_agent.py           # Fertilizer agent & dosage tests
+│   ├── test_data_agents.py                # Weather, Soil, Market agent tests
+│   ├── test_rag_agent.py                  # RAG loader, vector index, and knowledge tests
+│   ├── test_evaluation_agents.py          # Sustainability, Profit, and Rotation tests
+│   ├── test_orchestrator.py               # LangGraph multi-agent orchestrator tests
+│   └── test_frontend.py                   # Streamlit frontend & translations tests
+├── Dockerfile                             # Multi-stage production container definition
+├── docker-compose.yml                     # Dual-container orchestration (FastAPI + Streamlit)
+├── run_project.sh                         # Automated 1-click startup script
 ├── requirements.txt
 ├── pytest.ini
 ├── .env.example
 ├── .gitignore
 └── README.md
 
-text
-
-
----
+```
 
 ## 🚀 Quickstart & Installation
 
