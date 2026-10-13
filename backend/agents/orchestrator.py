@@ -5,7 +5,12 @@ Sustainability, Yield/Profit, Rotation, Reasoning) via a compiled LangGraph work
 """
 
 from typing import TypedDict, Optional, Dict, Any, List
-from langgraph.graph import StateGraph, END
+
+try:
+    from langgraph.graph import StateGraph, END
+except ImportError:
+    StateGraph = None
+    END = "__end__"
 
 from backend.schemas.orchestrator_schemas import (
     OrchestratorQueryRequest,
@@ -23,19 +28,19 @@ from backend.agents.reasoning_agent import ReasoningAgent
 
 
 class FarmAdvisoryState(TypedDict, total=False):
-    """Shared state container passed between all agents in the LangGraph pipeline."""
+    """Shared state dictionary passed between all agent nodes in LangGraph."""
     query: str
     location: str
     land_area_acres: float
     irrigation_method: str
-    extracted_params: Dict[str, Any]
+    extracted_features: Dict[str, Any]
     weather_data: Dict[str, Any]
     soil_data: Dict[str, Any]
     market_data: Dict[str, Any]
     crop_recommendation: Dict[str, Any]
     fertilizer_recommendation: Dict[str, Any]
-    sustainability_report: Dict[str, Any]
     profitability_report: Dict[str, Any]
+    sustainability_report: Dict[str, Any]
     rotation_plan: Dict[str, Any]
     explainable_reasoning: str
     missing_info: List[str]
@@ -43,10 +48,10 @@ class FarmAdvisoryState(TypedDict, total=False):
 
 
 class FarmOrchestrator:
-    """Master LangGraph supervisor orchestrating the end-to-end multi-agent pipeline."""
+    """Master LangGraph supervisor orchestrating all 8 autonomous agronomic agents."""
 
     def __init__(self):
-        """Initialize all individual agents and build compiled LangGraph graph."""
+        """Initialize all sub-agents and build the compiled StateGraph."""
         self.crop_agent = CropRecommendationAgent()
         self.fertilizer_agent = FertilizerAgent()
         self.weather_agent = WeatherAgent()
@@ -60,166 +65,175 @@ class FarmOrchestrator:
         self.graph = self._build_graph()
 
     def _node_entity_extraction(self, state: FarmAdvisoryState) -> Dict[str, Any]:
-        """Phase 2: Extract entities and identify known parameters."""
+        """Node 1: Extract soil and climatic parameters from farmer's natural text query."""
         query = state.get("query", "")
-        extracted = self.crop_agent.extract_parameters_regex(query)
-
-        # Extract location if not explicitly provided
-        loc = state.get("location")
-        if not loc:
-            loc = self.weather_agent.extract_location(query)
-
+        extracted, missing = self.crop_agent.extract_parameters_from_text(query)
         return {
-            "location": loc,
-            "extracted_params": extracted
+            "extracted_features": extracted,
+            "missing_info": missing
         }
 
     def _node_data_enrichment(self, state: FarmAdvisoryState) -> Dict[str, Any]:
-        """Phase 3: Fetch autonomous weather, regional soil, and market price data."""
-        loc = state.get("location", "Hyderabad")
-        extracted = dict(state.get("extracted_params", {}))
+        """Node 2: Autonomously query Weather and Soil agents to enrich missing data points."""
+        extracted = dict(state.get("extracted_features", {}))
+        missing = list(state.get("missing_info", []))
+        location = state.get("location") or "Hyderabad, Telangana"
 
-        # Weather enrichment
-        weather_res = self.weather_agent.run(f"Weather for {loc}")
-        weather_dict = weather_res.model_dump()
+        # 1. Fetch live agro-weather
+        weather_res = self.weather_agent.run(location)
+        weather_data = weather_res.model_dump()
 
-        # If climate parameters missing in text, fill from Weather Agent
-        if extracted.get("temperature") is None:
+        if "temperature" in missing:
             extracted["temperature"] = weather_res.temperature
-        if extracted.get("humidity") is None:
+            missing.remove("temperature")
+        if "humidity" in missing:
             extracted["humidity"] = weather_res.humidity
-        if extracted.get("rainfall") is None:
-            extracted["rainfall"] = weather_res.rainfall_forecast_mm
+            missing.remove("humidity")
+        if "rainfall" in missing:
+            extracted["rainfall"] = weather_res.rainfall_mm
+            missing.remove("rainfall")
 
-        # Soil profile enrichment
-        soil_res = self.soil_agent.run(f"Soil in {loc}")
-        soil_dict = soil_res.model_dump()
+        # 2. Fetch regional soil atlas
+        soil_res = self.soil_agent.run(location)
+        soil_data = soil_res.model_dump()
 
-        if extracted.get("ph") is None:
-            extracted["ph"] = soil_res.average_ph
-        if extracted.get("nitrogen") is None:
-            extracted["nitrogen"] = soil_res.average_nitrogen
-        if extracted.get("phosphorus") is None:
-            extracted["phosphorus"] = soil_res.average_phosphorus
-        if extracted.get("potassium") is None:
-            extracted["potassium"] = soil_res.average_potassium
+        if "ph" in missing:
+            extracted["ph"] = soil_res.ph
+            missing.remove("ph")
 
         return {
-            "weather_data": weather_dict,
-            "soil_data": soil_dict,
-            "extracted_params": extracted
+            "extracted_features": extracted,
+            "missing_info": missing,
+            "weather_data": weather_data,
+            "soil_data": soil_data
         }
 
     def _node_recommendation(self, state: FarmAdvisoryState) -> Dict[str, Any]:
-        """Phase 4: Run Crop ML and Fertilizer ML models."""
-        params = state.get("extracted_params", {})
-        soil_data = state.get("soil_data", {})
+        """Node 3: Execute Crop ML classifier and Fertilizer optimization engine."""
+        extracted = state.get("extracted_features", {})
+        query = state.get("query", "")
 
-        # 1. Crop Recommendation ML
-        validated_crop_input = {
-            "nitrogen": float(params.get("nitrogen", 80.0)),
-            "phosphorus": float(params.get("phosphorus", 40.0)),
-            "potassium": float(params.get("potassium", 40.0)),
-            "temperature": float(params.get("temperature", 25.0)),
-            "humidity": float(params.get("humidity", 70.0)),
-            "ph": float(params.get("ph", 6.5)),
-            "rainfall": float(params.get("rainfall", 200.0)),
-        }
-        crop_res = self.crop_agent.tool.invoke(validated_crop_input)
+        # 1. Crop ML Recommendation
+        crop_res = self.crop_agent.run(query)
+        crop_data = crop_res.model_dump()
+        rec_crop = crop_res.recommended_crop or "rice"
 
-        # 2. Fertilizer Recommendation ML
-        soil_type = soil_data.get("dominant_soil_type", "Loamy")
-        fert_res = self.fertilizer_agent.tool.invoke({
-            "nitrogen": validated_crop_input["nitrogen"],
-            "phosphorus": validated_crop_input["phosphorus"],
-            "potassium": validated_crop_input["potassium"],
-            "soil_type": soil_type,
-            "crop_type": crop_res["recommended_crop"].title()
-        })
+        # 2. Fertilizer ML Recommendation
+        fert_query = (
+            f"I want to grow {rec_crop} with soil nitrogen {extracted.get('N', 50)}, "
+            f"phosphorus {extracted.get('P', 50)}, potassium {extracted.get('K', 50)}."
+        )
+        fert_res = self.fertilizer_agent.run(fert_query)
+        fert_data = fert_res.model_dump()
 
-        # Market price lookup for recommended crop
-        mkt_res = self.market_agent.run(f"{crop_res['recommended_crop']} in Telangana")
+        # 3. Market APMC Mandi Data
+        market_res = self.market_agent.run(crop=rec_crop, mandi="Hyderabad")
+        market_data = market_res.model_dump()
 
         return {
-            "crop_recommendation": crop_res,
-            "fertilizer_recommendation": fert_res,
-            "market_data": mkt_res.model_dump()
+            "crop_recommendation": crop_data,
+            "fertilizer_recommendation": fert_data,
+            "market_data": market_data
         }
 
     def _node_evaluation(self, state: FarmAdvisoryState) -> Dict[str, Any]:
-        """Phase 5: Run Sustainability, Profitability, and Rotation evaluations."""
-        crop_name = state.get("crop_recommendation", {}).get("recommended_crop", "Rice")
-        fert_name = state.get("fertilizer_recommendation", {}).get("recommended_fertilizer", "Urea")
-        acres = float(state.get("land_area_acres", 2.0))
-        irr = state.get("irrigation_method", "Flood")
-        soil_type = state.get("soil_data", {}).get("dominant_soil_type", "Black")
-        mkt_price = float(state.get("market_data", {}).get("modal_price_per_quintal", 2350.0))
+        """Node 4: Evaluate Economics (Yield/Profit), Sustainability (0-100), and Crop Rotation."""
+        crop_rec = state.get("crop_recommendation", {})
+        rec_crop = crop_rec.get("recommended_crop", "Rice")
+        acres = state.get("land_area_acres", 2.0)
+        irr_method = state.get("irrigation_method", "Flood")
+        fert_rec = state.get("fertilizer_recommendation", {})
+        fert_name = fert_rec.get("recommended_fertilizer", "Urea")
+        weather = state.get("weather_data", {})
+        rain = weather.get("rainfall_mm", 150.0)
 
-        # Sustainability
-        from backend.schemas.evaluation_schemas import (
-            SustainabilityRequest,
-            ProfitabilityRequest,
-            RotationPlanRequest,
+        # 1. Yield and Profitability
+        profit_res = self.profit_agent.calculate(
+            crop_name=rec_crop,
+            land_area_acres=acres
         )
-        sust_res = self.sustainability_agent.evaluate(SustainabilityRequest(
-            crop=crop_name,
-            irrigation_method=irr,
+
+        # 2. Sustainability Index (0-100)
+        from backend.schemas.evaluation_schemas import SustainabilityRequest
+        sus_req = SustainabilityRequest(
+            crop=rec_crop,
+            irrigation_method=irr_method,
             fertilizer_used=fert_name,
-            soil_organic_carbon=0.55,
-            rainfall_mm=200.0
-        ))
+            soil_organic_carbon=0.65,
+            rainfall_mm=rain,
+            residue_burning=False,
+            organic_amendments=True,
+            cover_cropping=True
+        )
+        sus_res = self.sustainability_agent.evaluate(sus_req)
 
-        # Profitability
-        profit_res = self.profit_agent.evaluate(ProfitabilityRequest(
-            crop=crop_name,
-            land_area_acres=acres,
-            mandi_price_per_quintal=mkt_price
-        ))
-
-        # Rotation
-        rot_res = self.rotation_agent.plan_rotation(RotationPlanRequest(
-            current_crop=crop_name,
-            soil_type=soil_type,
-            irrigation_availability="Assured"
-        ))
+        # 3. Crop Rotation Plan
+        rotation_res = self.rotation_agent.plan(
+            primary_crop=rec_crop,
+            current_season="Kharif"
+        )
 
         return {
-            "sustainability_report": sust_res.model_dump(),
             "profitability_report": profit_res.model_dump(),
-            "rotation_plan": rot_res.model_dump()
+            "sustainability_report": sus_res.model_dump(),
+            "rotation_plan": rotation_res.model_dump()
         }
 
     def _node_reasoning_synthesis(self, state: FarmAdvisoryState) -> Dict[str, Any]:
-        """Phase 6: Synthesize explainable recommendation package."""
-        reasoning_text = self.reasoning_agent.synthesize(dict(state))
+        """Node 5: Phase 6 Reasoning Engine formulating explainable, transparent farmer advice."""
+        reasoning_text = self.reasoning_agent.synthesize_farm_advice(
+            crop_data=state.get("crop_recommendation", {}),
+            fert_data=state.get("fertilizer_recommendation", {}),
+            weather_data=state.get("weather_data", {}),
+            soil_data=state.get("soil_data", {}),
+            profit_data=state.get("profitability_report", {}),
+            sus_data=state.get("sustainability_report", {}),
+            rotation_data=state.get("rotation_plan", {})
+        )
+
         return {
             "explainable_reasoning": reasoning_text,
             "status": "success"
         }
 
     def _build_graph(self) -> Any:
-        """Construct and compile the LangGraph StateGraph."""
-        builder = StateGraph(FarmAdvisoryState)
+        """Construct and compile the LangGraph StateGraph, or provide sequential fallback."""
+        if StateGraph is not None:
+            builder = StateGraph(FarmAdvisoryState)
 
-        builder.add_node("extract_entities", self._node_entity_extraction)
-        builder.add_node("enrich_data", self._node_data_enrichment)
-        builder.add_node("recommend_crop_and_fert", self._node_recommendation)
-        builder.add_node("evaluate_farm_plan", self._node_evaluation)
-        builder.add_node("synthesize_reasoning", self._node_reasoning_synthesis)
+            builder.add_node("extract_entities", self._node_entity_extraction)
+            builder.add_node("enrich_data", self._node_data_enrichment)
+            builder.add_node("recommend_crop_and_fert", self._node_recommendation)
+            builder.add_node("evaluate_farm_plan", self._node_evaluation)
+            builder.add_node("synthesize_reasoning", self._node_reasoning_synthesis)
 
-        builder.set_entry_point("extract_entities")
-        builder.add_edge("extract_entities", "enrich_data")
-        builder.add_edge("enrich_data", "recommend_crop_and_fert")
-        builder.add_edge("recommend_crop_and_fert", "evaluate_farm_plan")
-        builder.add_edge("evaluate_farm_plan", "synthesize_reasoning")
-        builder.add_edge("synthesize_reasoning", END)
+            builder.set_entry_point("extract_entities")
+            builder.add_edge("extract_entities", "enrich_data")
+            builder.add_edge("enrich_data", "recommend_crop_and_fert")
+            builder.add_edge("recommend_crop_and_fert", "evaluate_farm_plan")
+            builder.add_edge("evaluate_farm_plan", "synthesize_reasoning")
+            builder.add_edge("synthesize_reasoning", END)
 
-        return builder.compile()
+            return builder.compile()
+
+        # Pure Python sequential fallback if langgraph is not installed
+        class _SequentialWorkflow:
+            def __init__(self, orch):
+                self.orch = orch
+
+            def invoke(self, state: Dict[str, Any]) -> Dict[str, Any]:
+                s = dict(state)
+                s.update(self.orch._node_entity_extraction(s))
+                s.update(self.orch._node_data_enrichment(s))
+                s.update(self.orch._node_recommendation(s))
+                s.update(self.orch._node_evaluation(s))
+                s.update(self.orch._node_reasoning_synthesis(s))
+                return s
+
+        return _SequentialWorkflow(self)
 
     def process_query(self, req: OrchestratorQueryRequest) -> OrchestratorResponse:
-        """
-        Execute full multi-agent pipeline and return comprehensive advice.
-        """
+        """Execute full multi-agent pipeline and return comprehensive advice."""
         initial_state: FarmAdvisoryState = {
             "query": req.query,
             "location": req.location or "",

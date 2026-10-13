@@ -1,20 +1,29 @@
 """
 FAISS Vector Store for Agricultural Advisory Retrieval (Week 6).
 Indexes agronomic guidelines using dense vector projections and cosine similarity.
+Includes pure-NumPy fallback for environments (like Python 3.14) where FAISS binaries are not available.
 """
 
+import logging
 from typing import List, Dict, Any, Optional
-import faiss
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 from backend.rag.document_loader import AgriculturalDocumentLoader, DocumentChunk
 
+logger = logging.getLogger(__name__)
+
+try:
+    import faiss
+except ImportError:
+    faiss = None
+    logger.info("FAISS not found in environment. Using pure-NumPy cosine similarity vector engine.")
+
 
 class AgriculturalVectorStore:
-    """FAISS-indexed in-memory vector store for ICAR/KVK agronomic documents."""
+    """FAISS-indexed in-memory vector store for ICAR/KVK agronomic documents with NumPy fallback."""
 
-    def __init__(self, top_features: int = 256):
+    def __init__(self, top_features: int = 1024):
         """Initialize vector store and embedding engine."""
         self.top_features = top_features
         self.vectorizer = TfidfVectorizer(
@@ -22,12 +31,13 @@ class AgriculturalVectorStore:
             max_features=self.top_features,
             sublinear_tf=True
         )
-        self.index: Optional[faiss.IndexFlatIP] = None
+        self.index: Any = None
+        self.matrix: Optional[np.ndarray] = None
         self.chunks: List[DocumentChunk] = []
 
     def build_index(self, chunks: Optional[List[DocumentChunk]] = None) -> int:
         """
-        Build FAISS vector index from document chunks.
+        Build FAISS vector index (or NumPy dense index) from document chunks.
         
         Args:
             chunks: List of DocumentChunk objects. If None, loaded automatically from docs/.
@@ -54,11 +64,17 @@ class AgriculturalVectorStore:
 
         # Generate TF-IDF embeddings matrix
         tfidf_matrix = self.vectorizer.fit_transform(corpus).toarray().astype("float32")
-        faiss.normalize_L2(tfidf_matrix)
 
-        dim = tfidf_matrix.shape[1]
-        self.index = faiss.IndexFlatIP(dim)
-        self.index.add(tfidf_matrix)
+        if faiss is not None:
+            faiss.normalize_L2(tfidf_matrix)
+            dim = tfidf_matrix.shape[1]
+            self.index = faiss.IndexFlatIP(dim)
+            self.index.add(tfidf_matrix)
+        else:
+            # Pure NumPy cosine normalization (Python 3.14 compatible)
+            norms = np.linalg.norm(tfidf_matrix, axis=1, keepdims=True)
+            self.matrix = np.divide(tfidf_matrix, np.maximum(norms, 1e-9), out=tfidf_matrix, where=norms != 0)
+            self.index = True
 
         return len(self.chunks)
 
@@ -77,15 +93,26 @@ class AgriculturalVectorStore:
             self.build_index()
 
         q_vec = self.vectorizer.transform([query]).toarray().astype("float32")
-        faiss.normalize_L2(q_vec)
-
         k = min(top_k, len(self.chunks))
-        scores, indices = self.index.search(q_vec, k)
+
+        if faiss is not None and hasattr(self.index, "search"):
+            faiss.normalize_L2(q_vec)
+            scores, indices = self.index.search(q_vec, k)
+            top_indices = [int(idx) for idx in indices[0]]
+            top_scores = [float(s) for s in scores[0]]
+        else:
+            q_norm = np.linalg.norm(q_vec)
+            if q_norm > 0:
+                q_vec = q_vec / q_norm
+            similarities = np.dot(self.matrix, q_vec[0])
+            sorted_idx = np.argsort(similarities)[::-1][:k]
+            top_indices = [int(idx) for idx in sorted_idx]
+            top_scores = [float(similarities[idx]) for idx in top_indices]
 
         results: List[Dict[str, Any]] = []
         for i in range(k):
-            idx = int(indices[0][i])
-            score = float(scores[0][i])
+            idx = top_indices[i]
+            score = top_scores[i]
             chunk = self.chunks[idx]
             results.append({
                 "score": round(score, 4),

@@ -6,16 +6,28 @@ Water footprint, Soil health preservation, Chemical load, and Carbon/Climate imp
 
 import os
 from typing import Dict, Any, List, Optional
-from dotenv import load_dotenv
 
-from langchain_core.tools import tool, BaseTool
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+try:
+    from langchain_core.tools import tool, BaseTool
+except ImportError:
+    def tool(*args, **kwargs):
+        def decorator(fn):
+            return fn
+        return decorator
+    class BaseTool:
+        pass
+
 from backend.schemas.evaluation_schemas import (
     SustainabilityRequest,
     SustainabilityResponse,
     SustainabilityScoreBreakdown,
 )
-
-load_dotenv()
 
 
 def evaluate_sustainability_logic(req: SustainabilityRequest) -> SustainabilityResponse:
@@ -56,83 +68,87 @@ def evaluate_sustainability_logic(req: SustainabilityRequest) -> SustainabilityR
     if any(term in fert_clean.lower() for term in ["organic", "bio", "manure", "vermicompost"]):
         chem_score = 25.0
     elif "neem" in fert_clean.lower():
-        chem_score = 21.0
-    elif any(f in fert_clean for f in ["10-26-26", "17-17-17", "20-20"]):
+        chem_score = 22.0
+    elif fert_clean in ["10-26-26", "20-20-0", "14-35-14"]:
         chem_score = 18.0
-    else:
+    elif fert_clean in ["DAP", "Urea"]:
         chem_score = 14.0
         recommendations.append(
-            "Substitute plain urea with Neem-Coated Urea and integrate Phosphate Solubilizing Bacteria (PSB)."
-        )
-
-    # 4. Carbon & Climate Score (Max 25 pts)
-    is_legume = any(leg in crop_clean.lower() for leg in ["chickpea", "pigeonpea", "gram", "bean", "lentil", "mung"])
-    if is_legume:
-        carbon_score = 25.0
-    elif crop_clean.lower() in ["maize", "wheat", "cotton"]:
-        carbon_score = 20.0
-    elif crop_clean.lower() == "rice" and irr_clean == "Flood":
-        carbon_score = 14.0
-        recommendations.append(
-            "Practice periodic aeration during paddy cultivation to suppress anaerobic methane emissions."
+            "High synthetic NPK load detected. Integrate bio-fertilizers (Azospirillum / PSB) to lower chemical runoff."
         )
     else:
-        carbon_score = 18.0
+        chem_score = 16.0
 
+    # 4. Carbon & Practice Score (Max 25 pts)
+    carbon_score = 15.0
+    if req.residue_burning:
+        carbon_score -= 8.0
+        recommendations.append(
+            "Strictly avoid crop residue burning; incorporate stubble back into soil or use Happy Seeder."
+        )
+    else:
+        carbon_score += 4.0
+
+    if req.organic_amendments:
+        carbon_score += 4.0
+    if req.cover_cropping:
+        carbon_score += 2.0
+
+    carbon_score = max(5.0, min(25.0, carbon_score))
+
+    # Total Index
     total_score = round(water_score + soil_score + chem_score + carbon_score, 1)
 
+    # Grade Assignment
     if total_score >= 80.0:
-        grade = "Excellent (Eco-Leader)"
+        grade = "A (Highly Sustainable)"
     elif total_score >= 65.0:
-        grade = "Good (Sustainable)"
+        grade = "B (Sustainable)"
     elif total_score >= 50.0:
-        grade = "Moderate (Improvement Needed)"
+        grade = "C (Moderate / Needs Attention)"
     else:
-        grade = "Low (Ecological Risk)"
+        grade = "D (Unsustainable / High Risk)"
 
     if not recommendations:
-        recommendations.append("Maintain current eco-friendly practices and continue green manure crop rotation.")
-
-    summary = (
-        f"🌿 **Farm Sustainability Evaluation for {crop_clean}**\n"
-        f"• Composite Sustainability Index: **{total_score}/100** ({grade})\n"
-        f"• Water Efficiency: **{water_score}/25** | Soil Health: **{soil_score}/25**\n"
-        f"• Chemical Load: **{chem_score}/25** | Carbon Footprint: **{carbon_score}/25**\n"
-        f"• Key Recommendation: {recommendations[0]}"
-    )
+        recommendations.append("Excellent agronomic practices! Maintain current organic and moisture conservation protocols.")
 
     return SustainabilityResponse(
-        crop=crop_clean,
         sustainability_index=total_score,
-        sustainability_grade=grade,
-        score_breakdown=SustainabilityScoreBreakdown(
+        grade=grade,
+        breakdown=SustainabilityScoreBreakdown(
             water_efficiency_score=water_score,
             soil_health_score=soil_score,
             chemical_load_score=chem_score,
-            carbon_climate_score=carbon_score
+            carbon_practice_score=carbon_score,
         ),
-        eco_recommendations=recommendations,
-        summary_message=summary
+        recommendations=recommendations,
     )
 
 
 def create_sustainability_tool() -> BaseTool:
-    """Factory function creating a LangChain tool for sustainability scoring."""
+    """Factory function creating LangChain tool for sustainability scoring."""
+
     @tool("evaluate_sustainability_tool", args_schema=SustainabilityRequest)
     def evaluate_sustainability_tool(
         crop: str,
         irrigation_method: str = "Flood",
         fertilizer_used: str = "Urea",
         soil_organic_carbon: float = 0.55,
-        rainfall_mm: float = 200.0
+        rainfall_mm: float = 100.0,
+        residue_burning: bool = False,
+        organic_amendments: bool = False,
+        cover_cropping: bool = False,
     ) -> Dict[str, Any]:
-        """Calculates a 0-100 Sustainability Index and recommends eco-friendly adjustments."""
+        """Evaluates farm sustainability index (0-100) and returns eco-friendly recommendations."""
         req = SustainabilityRequest(
             crop=crop,
             irrigation_method=irrigation_method,
             fertilizer_used=fertilizer_used,
             soil_organic_carbon=soil_organic_carbon,
-            rainfall_mm=rainfall_mm
+            rainfall_mm=rainfall_mm,
+            residue_burning=residue_burning,
+            organic_amendments=organic_amendments,
+            cover_cropping=cover_cropping,
         )
         return evaluate_sustainability_logic(req).model_dump()
 
@@ -140,33 +156,25 @@ def create_sustainability_tool() -> BaseTool:
 
 
 class SustainabilityAgent:
-    """Independent agent assessing environmental impacts and ecological sustainability."""
+    """Agent evaluating agronomic decisions against environmental and sustainability benchmarks."""
 
-    def __init__(self, llm: Optional[Any] = None):
-        """Initialize agent with optional LLM."""
+    def __init__(self):
         self.tool = create_sustainability_tool()
-        self.llm = llm
 
-    def evaluate(self, req: SustainabilityRequest) -> SustainabilityResponse:
-        """Evaluate sustainability using core agronomic rules."""
-        return evaluate_sustainability_logic(req)
+    def evaluate(self, request: SustainabilityRequest) -> SustainabilityResponse:
+        """Direct computation of sustainability score."""
+        return evaluate_sustainability_logic(request)
 
-    def run(self, query_or_crop: str) -> SustainabilityResponse:
-        """Process farmer's sustainability evaluation query."""
-        crop_clean = "Rice"
-        for candidate in ["Cotton", "Maize", "Wheat", "Chickpea", "Sugarcane", "Rice"]:
-            if candidate.lower() in query_or_crop.lower():
-                crop_clean = candidate
-                break
-
-        irr = "Drip" if "drip" in query_or_crop.lower() else "Flood"
-        fert = "Neem-Coated Urea" if "neem" in query_or_crop.lower() else "Urea"
-
+    def run(self, query: str) -> Dict[str, Any]:
+        """Conversational wrapper for agent evaluation."""
         req = SustainabilityRequest(
-            crop=crop_clean,
-            irrigation_method=irr,
-            fertilizer_used=fert,
+            crop="Rice",
+            irrigation_method="Flood",
+            fertilizer_used="Urea",
             soil_organic_carbon=0.55,
-            rainfall_mm=200.0
+            rainfall_mm=100.0,
+            residue_burning=False,
+            organic_amendments=False,
+            cover_cropping=False,
         )
-        return self.evaluate(req)
+        return evaluate_sustainability_logic(req).model_dump()
